@@ -1,51 +1,48 @@
-const form = document.getElementById('licenseForm');
-const statusEl = document.getElementById('licenseStatus');
-const downloadEl = document.getElementById('windowsDownload');
-const verifyBtn = document.getElementById('verifyBtn');
+const year = document.getElementById('year');
+if (year) year.textContent = new Date().getFullYear();
 
-document.getElementById('year').textContent = new Date().getFullYear();
+const moduleCopy = {
+  Combat: 'Combat and PvP controls are grouped together so your in-game setup stays quick to navigate.',
+  Render: 'HUD, visual, and rendering preferences live in one category with profile-friendly settings.',
+  Utility: 'General utility features and account-side tools are organized away from combat settings.',
+  Movement: 'Movement settings are kept in a dedicated category for faster configuration.',
+  Player: 'Player-related controls, social features, and profile options stay together.',
+  Config: 'Save and restore your Axiom profiles and use the dashboard reset tools when needed.'
+};
 
-fetch('/api/config')
-  .then(r => r.json())
-  .then(cfg => {
-    document.getElementById('versionText').textContent = cfg.version || '1.0.0';
-    for (const id of ['discordNav', 'discordHero']) {
-      const el = document.getElementById(id);
-      el.href = cfg.discordUrl && cfg.discordUrl !== '#' ? cfg.discordUrl : '#download';
-    }
-  })
-  .catch(() => {});
-
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  downloadEl.classList.add('disabled');
-  downloadEl.setAttribute('aria-disabled', 'true');
-  downloadEl.href = '#';
-  statusEl.className = 'status';
-  statusEl.textContent = 'Checking key…';
-  verifyBtn.disabled = true;
-
-  try {
-    const response = await fetch('/api/license/activate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        key: document.getElementById('licenseKey').value,
-        clientId: document.getElementById('clientId').value
-      })
-    });
-    const data = await response.json();
-    if (!response.ok || !data.valid) throw new Error(data.error || 'Key verification failed.');
-
-    statusEl.className = 'status success';
-    statusEl.textContent = `Key successful — active until ${new Date(data.expiresAt).toLocaleString()}`;
-    downloadEl.href = `/api/download/windows?ticket=${encodeURIComponent(data.downloadTicket)}`;
-    downloadEl.classList.remove('disabled');
-    downloadEl.setAttribute('aria-disabled', 'false');
-  } catch (err) {
-    statusEl.className = 'status error';
-    statusEl.textContent = err.message;
-  } finally {
-    verifyBtn.disabled = false;
-  }
+document.querySelectorAll('.module-card').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.module-card').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const name = btn.dataset.module;
+    const detail = document.getElementById('moduleDetail');
+    detail.innerHTML = `<strong>${escapeHtml(name)}</strong><span>${escapeHtml(moduleCopy[name] || '')}</span><a href="/dashboard">Open dashboard →</a>`;
+  });
 });
+
+document.querySelectorAll('.pricing-toggle button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pricing-toggle button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+}
+
+fetch('/api/config').then(r => r.json()).then(cfg => {
+  for (const id of ['discordTop', 'discordHero', 'discordReviews']) {
+    const el = document.getElementById(id);
+    if (el) el.href = cfg.discordUrl && cfg.discordUrl !== '#' ? cfg.discordUrl : '/dashboard';
+  }
+  document.getElementById('monthlyBtn').href = cfg.monthlyUrl || '/dashboard?tab=redeem';
+  document.getElementById('lifetimeBtn').href = cfg.lifetimeUrl || '/dashboard?tab=redeem';
+}).catch(() => {});
+
+fetch('/api/community/review').then(r => r.json()).then(data => {
+  if (!data.posts?.length) return;
+  document.getElementById('reviewGrid').innerHTML = data.posts.slice(0, 6).map(post => `
+    <article class="review-card"><div class="quote">“</div><b>${escapeHtml(post.title || post.body.slice(0, 48))}</b><p>${escapeHtml(post.body)}</p><div class="review-foot"><span>${'★'.repeat(post.rating || 5)}</span><small>${escapeHtml(post.username)}</small></div></article>
+  `).join('');
+}).catch(() => {});

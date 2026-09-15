@@ -22,8 +22,28 @@ services:
         sync: false
       - key: PUBLIC_CLIENT_VERSION
         value: 1.0.0
+      - key: PUBLIC_CLIENT_UPDATED
+        value: Sep 15, 2026
+      - key: PUBLIC_MONTHLY_URL
+        value: /dashboard?tab=redeem
+      - key: PUBLIC_LIFETIME_URL
+        value: /dashboard?tab=redeem
+      - key: PUBLIC_DEVICE_SLOT_URL
+        value: /dashboard?tab=utilities
       - key: DOWNLOAD_FILENAME
         value: Axiom-Client.jar
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_GUILD_ID
+        sync: false
+      - key: DISCORD_ALLOWED_ROLE_IDS
+        sync: false
+      - key: DISCORD_OWNER_ROLE_IDS
+        sync: false
+      - key: DISCORD_REDIRECT_URI
+        sync: false
 
 databases:
   - name: axiom-client-db

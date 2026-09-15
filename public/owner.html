@@ -3,34 +3,35 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#08070b">
+  <meta name="theme-color" content="#081019">
   <title>Axiom Client — Owner Panel</title>
-  <link rel="icon" href="/assets/axiom-logo.svg" type="image/svg+xml">
+  <link rel="icon" href="/assets/axiom-logo.png" type="image/png">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="owner-body">
-  <div class="noise"></div>
-  <div class="orb orb-one"></div>
-  <header class="nav shell">
-    <a class="brand" href="/"><img src="/assets/axiom-logo.svg" alt="Axiom Client logo"><span>Axiom <b>Client</b></span></a>
+  <header class="nav">
+    <a class="brand" href="/"><img src="/assets/axiom-logo.png" alt="Axiom Client"><span>Axiom Client</span></a>
     <a class="ghost small" href="/">Back to site</a>
   </header>
 
   <main class="shell owner-wrap">
     <section id="loginPanel" class="panel login-panel">
-      <div class="section-kicker">OWNER ACCESS</div>
-      <h1>Key management.</h1>
-      <p>Sign in with the owner password stored securely in your Render environment variables.</p>
+      <div class="eyebrow">OWNER ACCESS</div>
+      <h1>Axiom control.</h1>
+      <p>Use the owner password, or sign in with Discord if your account has one of the configured owner roles.</p>
       <form id="ownerLogin" class="license-form compact">
         <label>Owner password<input id="ownerPassword" type="password" autocomplete="current-password" required></label>
-        <button class="primary full" type="submit">Sign in</button>
+        <div class="owner-login-actions">
+          <button class="pill primary-soft full" type="submit">Sign in</button>
+          <a class="pill outline full" href="/auth/discord?next=/owner">Discord Owner Login</a>
+        </div>
         <div id="loginStatus" class="status"></div>
       </form>
     </section>
 
     <section id="dashboard" class="dashboard hidden">
       <div class="owner-heading">
-        <div><div class="section-kicker">AXIOM CONTROL</div><h1>License dashboard.</h1></div>
+        <div><div class="eyebrow">AXIOM CONTROL</div><h1>License dashboard.</h1></div>
         <button id="logoutBtn" class="ghost small">Log out</button>
       </div>
 
@@ -43,8 +44,9 @@
               <label>Unit<select id="durationUnit"><option value="minutes">Minutes</option><option value="hours">Hours</option><option value="days" selected>Days</option><option value="weeks">Weeks</option><option value="months">Months</option></select></label>
             </div>
             <label>Client ID <small>(optional — blank binds on first activation)</small><input id="newClientId" placeholder="Optional"></label>
+            <label>Discord User ID <small>(optional — pre-binds the key to one Discord account)</small><input id="newDiscordUserId" placeholder="Optional Discord numeric ID"></label>
             <label>Note <small>(optional)</small><input id="licenseNote" maxlength="120" placeholder="Customer / order / Discord name"></label>
-            <button class="primary full" type="submit">Generate license</button>
+            <button class="pill primary-soft full" type="submit">Generate license</button>
           </form>
           <div id="generatedBox" class="generated hidden">
             <small>NEW LICENSE — COPY IT NOW</small>
@@ -54,20 +56,20 @@
         </section>
 
         <section class="panel quick-info">
-          <h2>How it behaves</h2>
-          <div class="info-item"><span>01</span><p>Generate a key with an expiration.</p></div>
-          <div class="info-item"><span>02</span><p>First activation binds it to the supplied client ID.</p></div>
-          <div class="info-item"><span>03</span><p>The mod calls <code>/api/license/check</code> while running.</p></div>
-          <div class="info-item"><span>04</span><p>Expired or revoked keys receive <b>valid: false</b>.</p></div>
+          <h2>How it works</h2>
+          <div class="info-item"><span>01</span><p>Generate a timed Axiom key.</p></div>
+          <div class="info-item"><span>02</span><p>Users sign into the dashboard with an allowed Discord role.</p></div>
+          <div class="info-item"><span>03</span><p>Redeeming a key links it to Discord and a client ID.</p></div>
+          <div class="info-item"><span>04</span><p>The mod calls <code>/api/license/check</code>; expired or revoked keys return <b>valid: false</b>.</p></div>
         </section>
       </div>
 
       <section class="panel licenses-panel">
-        <div class="table-heading"><div><h2>Licenses</h2><p>Newest 250 keys. Full raw keys are never stored.</p></div><button id="refreshBtn" class="ghost small">Refresh</button></div>
+        <div class="table-heading"><div><h2>Licenses</h2><p>Newest 250 licenses. Raw keys are shown only once when generated.</p></div><button id="refreshBtn" class="ghost small">Refresh</button></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Key</th><th>Status</th><th>Client ID</th><th>Expires</th><th>Note</th><th>Actions</th></tr></thead>
-            <tbody id="licenseRows"><tr><td colspan="6" class="empty">No licenses loaded.</td></tr></tbody>
+            <thead><tr><th>Key</th><th>Status</th><th>Client ID</th><th>Discord ID</th><th>Expires</th><th>Note</th><th>Actions</th></tr></thead>
+            <tbody id="licenseRows"><tr><td colspan="7" class="empty">No licenses loaded.</td></tr></tbody>
           </table>
         </div>
       </section>

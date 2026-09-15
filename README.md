@@ -1,127 +1,148 @@
-# Axiom Client Website
+# Axiom Client Website v2
 
-Original dark/purple Minecraft-client website with:
+This is a ready-to-deploy Node/Express + PostgreSQL website for Axiom Client. It uses the supplied purple `AC` logo and an original dark/slate client-site design inspired by the screenshots you provided.
 
-- Axiom branding and purple-A logo
-- Responsive landing page
-- Owner login
-- Cryptographically random license-key generation
-- Custom expiration duration
-- Optional pre-binding to a client ID
-- First-activation client-ID binding
-- License expiration and revocation
-- License unbinding from the owner panel
-- Protected Windows/JAR download ticket after successful validation
-- Minecraft-side `/api/license/check` endpoint
-- PostgreSQL storage
-- Render Blueprint (`render.yaml`)
+## Included
 
-## 1. Put your actual client file in the project
+- Axiom Client home page with Home, Modules, Pricing, Reviews, Discord, and Dashboard navigation.
+- Clickable module cards.
+- Pricing buttons with configurable destinations.
+- Public reviews pulled from PostgreSQL.
+- Discord OAuth login.
+- Discord server role gate for the user dashboard.
+- Separate Discord owner-role support plus the existing owner-password login.
+- Dashboard pages: Downloads, Updates, Redeem Key, Reviews, BaseFinds, Suggestions, Utilities, FAQ.
+- Timed license keys.
+- Client-ID binding.
+- License-to-Discord-account binding.
+- Protected Windows JAR download.
+- Owner key generation, revoke, and unbind controls.
+- Axiom license-device/HWID reset (2 resets per rolling 30 days).
+- Default config download.
+- Basic crash-log analyzer.
+- Java example for checking key expiration from the Minecraft client.
 
-Copy your client JAR to:
+The HWID utility only resets the **Axiom license binding stored in this website database**. It does not spoof Windows hardware IDs or bypass third-party bans/anti-cheat systems.
 
-`protected/Axiom-Client.jar`
+## 1. Put your client JAR in the project
 
-The real JAR is ignored by `.gitignore` by default. If Render is building only from GitHub, you have two simple choices:
+Place the real JAR here:
 
-### Choice A — easiest for a private repository
-Remove `protected/*.jar` from `.gitignore`, commit `protected/Axiom-Client.jar`, and keep the GitHub repository PRIVATE.
+```text
+protected/Axiom-Client.jar
+```
 
-### Choice B — stronger production setup
-Keep the JAR out of GitHub and move downloads to private object storage. The website can then issue short-lived signed URLs after license validation.
+`protected/*.jar` is ignored by Git by default. If you intentionally want the JAR in a **private** GitHub repository, remove that ignore rule first.
 
-## 2. Upload this folder to GitHub
+## 2. Render basics
 
-Create a new GitHub repository and upload everything in this folder. Do NOT upload a `.env` file.
+Use:
 
-## 3. Deploy on Render
+```text
+Language: Node
+Build Command: npm install
+Start Command: npm start
+```
 
-This project includes `render.yaml`, so you can use a Render Blueprint:
+Create a PostgreSQL database on Render in the same region as the web service. Add its **Internal Database URL** to the web service as `DATABASE_URL`.
 
-1. In Render, create a new Blueprint from the GitHub repository.
-2. Render creates the Node web service and PostgreSQL database.
-3. In the web service Environment settings, set:
-   - `ADMIN_PASSWORD` — your private owner-panel password
-   - `PUBLIC_DISCORD_URL` — your Discord invite URL
-4. `JWT_SECRET` is generated automatically by the Blueprint.
-5. Deploy.
+## 3. Required Render environment variables
 
-If you create the service manually instead, use:
+```text
+NODE_ENV=production
+DATABASE_SSL=false
+ADMIN_PASSWORD=YOUR_PRIVATE_OWNER_PASSWORD
+JWT_SECRET=YOUR_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS
+PUBLIC_DISCORD_URL=https://discord.gg/YOURINVITE
+PUBLIC_CLIENT_VERSION=1.0.0
+PUBLIC_CLIENT_UPDATED=Sep 15, 2026
+DOWNLOAD_FILENAME=Axiom-Client.jar
+```
 
-- Runtime: Node
-- Build command: `npm install`
-- Start command: `npm start`
-- Health check: `/api/health`
+Optional purchase/store destinations:
 
-Then add a PostgreSQL database and set its connection string as `DATABASE_URL`.
+```text
+PUBLIC_MONTHLY_URL=/dashboard?tab=redeem
+PUBLIC_LIFETIME_URL=/dashboard?tab=redeem
+PUBLIC_DEVICE_SLOT_URL=/dashboard?tab=utilities
+```
 
-## 4. Owner panel
+## 4. Discord OAuth + role setup
 
-Go to:
+Create or open an application in the Discord Developer Portal.
 
-`https://YOUR-SITE.onrender.com/owner`
+Under OAuth2, add this redirect URL exactly:
 
-Sign in with `ADMIN_PASSWORD`. You can choose a duration in minutes, hours, days, weeks, or months, optionally type a client ID, and generate a key.
+```text
+https://YOUR-RENDER-NAME.onrender.com/auth/discord/callback
+```
 
-Keys look like:
+Then add these Render variables:
 
-`AXIOM-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX`
+```text
+DISCORD_CLIENT_ID=your_application_client_id
+DISCORD_CLIENT_SECRET=your_application_client_secret
+DISCORD_GUILD_ID=your_discord_server_id
+DISCORD_ALLOWED_ROLE_IDS=role_id_1,role_id_2
+DISCORD_OWNER_ROLE_IDS=owner_role_id_1,owner_role_id_2
+DISCORD_REDIRECT_URI=https://YOUR-RENDER-NAME.onrender.com/auth/discord/callback
+```
 
-The raw key is shown once. The database stores only its SHA-256 hash plus a short preview.
+`DISCORD_ALLOWED_ROLE_IDS` controls who can enter `/dashboard`.
 
-## 5. User activation/download
+`DISCORD_OWNER_ROLE_IDS` lets those roles enter the owner API/panel after Discord login. The password login at `/owner` also continues to work.
 
-On the home page, a user enters:
+To copy a Discord server/role ID, enable Discord Developer Mode, then right-click the server or role and choose **Copy ID**.
 
-- License key
-- Client ID
+## 5. Dashboard flow
 
-If the key is active, it becomes bound to that client ID (if it was not already bound), the page displays `Key successful`, and a Windows download button unlocks for 10 minutes.
+1. User opens `/dashboard`.
+2. User clicks **Continue with Discord**.
+3. The site verifies that the user is in your configured server and has an allowed role.
+4. User opens **Redeem Key**.
+5. User enters an Axiom key and client ID.
+6. The key becomes linked to that Discord user and client ID.
+7. The Downloads page creates a short-lived download ticket and serves `protected/Axiom-Client.jar`.
 
-## 6. Make expiration actually disable the Minecraft client
+## 6. Owner key generator
 
-This part is important: the website cannot magically shut off a JAR that is already on somebody's PC.
+Open:
 
-Your Minecraft mod must call:
+```text
+https://YOUR-SITE/owner
+```
 
-`POST /api/license/check`
+You can generate a key for minutes, hours, days, weeks, or months. You can optionally pre-bind the key to a client ID or Discord user ID.
 
-Body:
+The raw key is shown once. PostgreSQL stores only its SHA-256 hash and a short preview.
+
+## 7. Minecraft client license check
+
+The client should periodically call:
+
+```http
+POST /api/license/check
+Content-Type: application/json
+```
 
 ```json
 {
   "key": "AXIOM-...",
-  "clientId": "their-client-id"
+  "clientId": "the-client-id"
 }
 ```
 
-Valid response:
+An expired/revoked/mismatched license returns `valid: false`.
 
-```json
-{
-  "valid": true,
-  "expiresAt": "2026-10-01T00:00:00.000Z"
-}
-```
+See `client-integration/AxiomLicenseClient.java` for the included example.
 
-Expired, revoked, invalid, or wrong-client-ID keys return a non-200 response with `valid: false`.
+## Important secret handling
 
-See `client-integration/AxiomLicenseClient.java` and `client-integration/README.md`.
+Never put these in public GitHub source:
 
-## Security notes
+- `ADMIN_PASSWORD`
+- `JWT_SECRET`
+- `DATABASE_URL`
+- `DISCORD_CLIENT_SECRET`
 
-- Keep `ADMIN_PASSWORD` and `JWT_SECRET` only in Render environment variables.
-- Use a private GitHub repo if it contains your actual client JAR.
-- Do not rely on website JavaScript for license security; all license decisions in this project happen server-side.
-- A determined person can patch a client-side mod to bypass checks. Obfuscation can raise the effort, but no client-side DRM is unbreakable.
-- Consider a terms/privacy page if you collect identifiers from users.
-
-## Local development
-
-You need Node.js 20+ and PostgreSQL.
-
-1. Copy `.env.example` to `.env`.
-2. Edit `DATABASE_URL`, `ADMIN_PASSWORD`, and `JWT_SECRET`.
-3. Run `npm install`.
-4. Run `npm start`.
-5. Open `http://localhost:3000`.
+Keep them in Render Environment Variables.

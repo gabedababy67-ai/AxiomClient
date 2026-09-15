@@ -1,16 +1,14 @@
 {
   "name": "axiom-client-website",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Axiom Client website with expiring license keys, client ID binding, owner dashboard, and protected Windows downloads.",
+  "description": "Axiom Client website with Discord role-gated dashboard, expiring license keys, client-ID binding, owner controls, and protected downloads.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
-  "engines": {
-    "node": ">=20"
-  },
+  "engines": { "node": ">=20" },
   "dependencies": {
     "dotenv": "17.2.2",
     "express": "5.1.0",

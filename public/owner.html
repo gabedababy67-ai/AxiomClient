@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08070b">
+  <title>Axiom Client — Owner Panel</title>
+  <link rel="icon" href="/assets/axiom-logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="owner-body">
+  <div class="noise"></div>
+  <div class="orb orb-one"></div>
+  <header class="nav shell">
+    <a class="brand" href="/"><img src="/assets/axiom-logo.svg" alt="Axiom Client logo"><span>Axiom <b>Client</b></span></a>
+    <a class="ghost small" href="/">Back to site</a>
+  </header>
+
+  <main class="shell owner-wrap">
+    <section id="loginPanel" class="panel login-panel">
+      <div class="section-kicker">OWNER ACCESS</div>
+      <h1>Key management.</h1>
+      <p>Sign in with the owner password stored securely in your Render environment variables.</p>
+      <form id="ownerLogin" class="license-form compact">
+        <label>Owner password<input id="ownerPassword" type="password" autocomplete="current-password" required></label>
+        <button class="primary full" type="submit">Sign in</button>
+        <div id="loginStatus" class="status"></div>
+      </form>
+    </section>
+
+    <section id="dashboard" class="dashboard hidden">
+      <div class="owner-heading">
+        <div><div class="section-kicker">AXIOM CONTROL</div><h1>License dashboard.</h1></div>
+        <button id="logoutBtn" class="ghost small">Log out</button>
+      </div>
+
+      <div class="dashboard-grid">
+        <section class="panel generator">
+          <h2>Generate key</h2>
+          <form id="generateForm" class="license-form compact">
+            <div class="duration-row">
+              <label>Duration<input id="durationAmount" type="number" min="1" max="3650" value="7" required></label>
+              <label>Unit<select id="durationUnit"><option value="minutes">Minutes</option><option value="hours">Hours</option><option value="days" selected>Days</option><option value="weeks">Weeks</option><option value="months">Months</option></select></label>
+            </div>
+            <label>Client ID <small>(optional — blank binds on first activation)</small><input id="newClientId" placeholder="Optional"></label>
+            <label>Note <small>(optional)</small><input id="licenseNote" maxlength="120" placeholder="Customer / order / Discord name"></label>
+            <button class="primary full" type="submit">Generate license</button>
+          </form>
+          <div id="generatedBox" class="generated hidden">
+            <small>NEW LICENSE — COPY IT NOW</small>
+            <code id="generatedKey"></code>
+            <div class="generated-actions"><button id="copyKey" class="ghost small">Copy key</button><span id="generatedExpiry"></span></div>
+          </div>
+        </section>
+
+        <section class="panel quick-info">
+          <h2>How it behaves</h2>
+          <div class="info-item"><span>01</span><p>Generate a key with an expiration.</p></div>
+          <div class="info-item"><span>02</span><p>First activation binds it to the supplied client ID.</p></div>
+          <div class="info-item"><span>03</span><p>The mod calls <code>/api/license/check</code> while running.</p></div>
+          <div class="info-item"><span>04</span><p>Expired or revoked keys receive <b>valid: false</b>.</p></div>
+        </section>
+      </div>
+
+      <section class="panel licenses-panel">
+        <div class="table-heading"><div><h2>Licenses</h2><p>Newest 250 keys. Full raw keys are never stored.</p></div><button id="refreshBtn" class="ghost small">Refresh</button></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Key</th><th>Status</th><th>Client ID</th><th>Expires</th><th>Note</th><th>Actions</th></tr></thead>
+            <tbody id="licenseRows"><tr><td colspan="6" class="empty">No licenses loaded.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script src="/owner.js"></script>
+</body>
+</html>

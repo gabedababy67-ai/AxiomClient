@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08070b">
+  <title>Axiom Client</title>
+  <meta name="description" content="Axiom Client — a modern Minecraft client experience.">
+  <link rel="icon" href="/assets/axiom-logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="noise"></div>
+  <div class="orb orb-one"></div>
+  <div class="orb orb-two"></div>
+
+  <header class="nav shell">
+    <a class="brand" href="#top" aria-label="Axiom Client home">
+      <img src="/assets/axiom-logo.svg" alt="Axiom Client logo">
+      <span>Axiom <b>Client</b></span>
+    </a>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#setup">Setup</a>
+      <a href="#download">Download</a>
+      <a id="discordNav" href="#" target="_blank" rel="noopener">Discord</a>
+    </nav>
+    <a class="ghost small" href="/owner">Owner Panel</a>
+  </header>
+
+  <main id="top">
+    <section class="hero shell">
+      <div class="eyebrow"><span></span> Built for modern Minecraft</div>
+      <h1>Play sharper.<br><em>Move with Axiom.</em></h1>
+      <p class="hero-copy">A clean, fast client experience with a polished interface, straightforward setup, and license access tied to your client ID.</p>
+      <div class="hero-actions">
+        <a class="primary" href="#download">Get Axiom <span>→</span></a>
+        <a id="discordHero" class="ghost" href="#" target="_blank" rel="noopener">Join Discord</a>
+      </div>
+      <div class="micro-row">
+        <span><i></i> License protected</span>
+        <span><i></i> Client ID binding</span>
+        <span><i></i> Version <b id="versionText">1.0.0</b></span>
+      </div>
+
+      <div class="hero-card">
+        <div class="hero-card-top">
+          <div class="window-dots"><span></span><span></span><span></span></div>
+          <span>AXIOM / CLIENT</span>
+        </div>
+        <div class="mock-ui">
+          <aside>
+            <div class="mock-logo"><img src="/assets/axiom-logo.svg" alt=""></div>
+            <div class="mock-line active"></div>
+            <div class="mock-line"></div>
+            <div class="mock-line"></div>
+            <div class="mock-line short"></div>
+          </aside>
+          <div class="mock-main">
+            <div class="mock-title">AXIOM</div>
+            <div class="mock-grid">
+              <div class="module on"><b>Combat</b><span>Enabled</span></div>
+              <div class="module"><b>Render</b><span>Configured</span></div>
+              <div class="module on"><b>Utility</b><span>Enabled</span></div>
+              <div class="module"><b>Movement</b><span>Ready</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="section shell">
+      <div class="section-kicker">WHY AXIOM</div>
+      <h2>Everything feels intentional.</h2>
+      <p class="section-copy">A dark, focused interface backed by a real license system rather than a fake download gate.</p>
+      <div class="feature-grid">
+        <article><div class="icon">⚡</div><h3>Fast access</h3><p>Validate your license and unlock the Windows download in seconds.</p></article>
+        <article><div class="icon">◇</div><h3>Bound to you</h3><p>Your first activation binds the key to a client ID so it cannot simply be reused elsewhere.</p></article>
+        <article><div class="icon">⌛</div><h3>Timed licenses</h3><p>Owners choose the exact duration. Expired or revoked keys are denied by the API.</p></article>
+      </div>
+    </section>
+
+    <section id="setup" class="section shell">
+      <div class="section-kicker">GET STARTED</div>
+      <h2>Three steps. No clutter.</h2>
+      <div class="steps">
+        <div><span>01</span><h3>Get a key</h3><p>Receive an Axiom license from an owner.</p></div>
+        <div><span>02</span><h3>Activate</h3><p>Enter your key and your client ID below.</p></div>
+        <div><span>03</span><h3>Download</h3><p>Once validated, your Windows download button unlocks.</p></div>
+      </div>
+    </section>
+
+    <section id="download" class="section shell download-section">
+      <div class="download-card">
+        <div class="download-copy">
+          <div class="section-kicker">DOWNLOAD AXIOM</div>
+          <h2>Enter your access key.</h2>
+          <p>The key is checked for expiration, revocation, and client-ID binding before a short-lived download ticket is issued.</p>
+        </div>
+        <form id="licenseForm" class="license-form">
+          <label>License key
+            <input id="licenseKey" autocomplete="off" placeholder="AXIOM-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX" required>
+          </label>
+          <label>Client ID
+            <input id="clientId" autocomplete="off" placeholder="Paste your client ID" required>
+          </label>
+          <button id="verifyBtn" class="primary full" type="submit">Verify key</button>
+          <div id="licenseStatus" class="status" aria-live="polite"></div>
+          <a id="windowsDownload" class="windows disabled" href="#" aria-disabled="true">
+            <span class="windows-icon">⊞</span>
+            <span><small>Download for</small><b>Windows</b></span>
+            <strong>↓</strong>
+          </a>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell footer">
+    <a class="brand" href="#top"><img src="/assets/axiom-logo.svg" alt=""><span>Axiom <b>Client</b></span></a>
+    <p>© <span id="year"></span> Axiom Client. Not affiliated with Mojang or Microsoft.</p>
+    <a href="/owner">Owner Panel</a>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

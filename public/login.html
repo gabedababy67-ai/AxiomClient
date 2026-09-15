@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#081019">
+  <title>Axiom Client — Sign In</title>
+  <link rel="icon" href="/assets/axiom-logo.png" type="image/png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="dashboard-body">
+  <div class="login-gate">
+    <div class="login-card">
+      <img src="/assets/axiom-logo.png" alt="Axiom Client">
+      <div class="eyebrow">AXIOM CLIENT</div>
+      <h1>Sign in with Discord</h1>
+      <p>Your Axiom account is your Discord account. Sign in first, then you can purchase access, view your license key, and manage your device binding.</p>
+      <div id="loginError" class="status error"></div>
+      <a class="pill discord-login" href="/auth/discord?next=/">Continue with Discord</a>
+      <p class="login-note">You must be a member of the configured Axiom Discord server. A paid customer role is not required before purchase.</p>
+    </div>
+  </div>
+  <script>
+    const error = new URLSearchParams(location.search).get('error');
+    const messages = {
+      not_in_server: 'Join the Axiom Discord server first, then try again.',
+      discord_not_configured: 'Discord OAuth is not fully configured on the server yet.',
+      oauth_state: 'Discord sign-in expired. Try again.',
+      oauth_token: 'Discord sign-in failed. Try again.',
+      discord_user: 'Discord could not return your account information.'
+    };
+    document.getElementById('loginError').textContent = messages[error] || '';
+  </script>
+</body>
+</html>

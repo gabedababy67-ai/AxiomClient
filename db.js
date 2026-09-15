@@ -16,20 +16,29 @@ async function initDb() {
       id BIGSERIAL PRIMARY KEY,
       key_hash TEXT UNIQUE NOT NULL,
       key_preview TEXT NOT NULL,
+      key_ciphertext TEXT,
       client_id TEXT,
       discord_user_id TEXT,
       expires_at TIMESTAMPTZ NOT NULL,
       revoked BOOLEAN NOT NULL DEFAULT FALSE,
       note TEXT DEFAULT '',
+      license_type TEXT NOT NULL DEFAULT 'manual',
+      payment_provider TEXT,
+      payment_reference TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       activated_at TIMESTAMPTZ,
       last_seen_at TIMESTAMPTZ
     );
   `);
   await pool.query(`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS discord_user_id TEXT;`);
+  await pool.query(`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS key_ciphertext TEXT;`);
+  await pool.query(`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS license_type TEXT NOT NULL DEFAULT 'manual';`);
+  await pool.query(`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS payment_provider TEXT;`);
+  await pool.query(`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS payment_reference TEXT;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS licenses_expires_idx ON licenses(expires_at);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS licenses_client_idx ON licenses(client_id);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS licenses_discord_idx ON licenses(discord_user_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS licenses_payment_ref_idx ON licenses(payment_reference);`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS web_sessions (
@@ -69,6 +78,29 @@ async function initDb() {
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS hwid_resets_user_idx ON hwid_resets(discord_user_id, created_at DESC);`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS payment_orders (
+      id UUID PRIMARY KEY,
+      discord_user_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      plan TEXT NOT NULL,
+      amount_usd NUMERIC(10,2) NOT NULL,
+      status TEXT NOT NULL DEFAULT 'created',
+      provider_id TEXT,
+      provider_subscription_id TEXT,
+      pay_currency TEXT,
+      pay_amount TEXT,
+      pay_address TEXT,
+      raw_status JSONB,
+      fulfilled_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS payment_orders_user_idx ON payment_orders(discord_user_id, created_at DESC);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS payment_orders_provider_idx ON payment_orders(provider, provider_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS payment_orders_subscription_idx ON payment_orders(provider_subscription_id);`);
 }
 
 module.exports = { pool, initDb };

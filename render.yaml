@@ -8,6 +8,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PUBLIC_SITE_URL
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: axiom-client-db
@@ -18,20 +20,20 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: LICENSE_ENCRYPTION_KEY
+        generateValue: true
       - key: PUBLIC_DISCORD_URL
         sync: false
       - key: PUBLIC_CLIENT_VERSION
         value: 1.0.0
       - key: PUBLIC_CLIENT_UPDATED
         value: Sep 15, 2026
-      - key: PUBLIC_MONTHLY_URL
-        value: /dashboard?tab=redeem
-      - key: PUBLIC_LIFETIME_URL
-        value: /dashboard?tab=redeem
-      - key: PUBLIC_DEVICE_SLOT_URL
-        value: /dashboard?tab=utilities
       - key: DOWNLOAD_FILENAME
         value: Axiom-Client.jar
+      - key: MONTHLY_PRICE_USD
+        value: "15.99"
+      - key: LIFETIME_PRICE_USD
+        value: "25.99"
       - key: DISCORD_CLIENT_ID
         sync: false
       - key: DISCORD_CLIENT_SECRET
@@ -40,9 +42,25 @@ services:
         sync: false
       - key: DISCORD_ALLOWED_ROLE_IDS
         sync: false
+      - key: DISCORD_CUSTOMER_ROLE_ID
+        sync: false
       - key: DISCORD_OWNER_ROLE_IDS
         sync: false
       - key: DISCORD_REDIRECT_URI
+        sync: false
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_MONTHLY_PRICE_ID
+        sync: false
+      - key: STRIPE_LIFETIME_PRICE_ID
+        sync: false
+      - key: NOWPAYMENTS_API_KEY
+        sync: false
+      - key: NOWPAYMENTS_IPN_SECRET
         sync: false
 
 databases:

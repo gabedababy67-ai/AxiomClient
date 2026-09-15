@@ -1,40 +1,22 @@
-# Axiom Client Website v2
+# Axiom Client Website v3
 
-This is a ready-to-deploy Node/Express + PostgreSQL website for Axiom Client. It uses the supplied purple `AC` logo and an original dark/slate client-site design inspired by the screenshots you provided.
+Axiom Client website + account dashboard for Render/GitHub. This version makes Discord the account system, adds Stripe card checkout and Litecoin checkout, and keeps the resulting license key and HWID/client-ID binding on the customer's website account.
 
-## Included
+## What changed in v3
 
-- Axiom Client home page with Home, Modules, Pricing, Reviews, Discord, and Dashboard navigation.
-- Clickable module cards.
-- Pricing buttons with configurable destinations.
-- Public reviews pulled from PostgreSQL.
-- Discord OAuth login.
-- Discord server role gate for the user dashboard.
-- Separate Discord owner-role support plus the existing owner-password login.
-- Dashboard pages: Downloads, Updates, Redeem Key, Reviews, BaseFinds, Suggestions, Utilities, FAQ.
-- Timed license keys.
-- Client-ID binding.
-- License-to-Discord-account binding.
-- Protected Windows JAR download.
-- Owner key generation, revoke, and unbind controls.
-- Axiom license-device/HWID reset (2 resets per rolling 30 days).
-- Default config download.
-- Basic crash-log analyzer.
-- Java example for checking key expiration from the Minecraft client.
+- The site is Discord-first: opening `/` shows the Discord sign-in gate until a valid session exists.
+- Any member of the configured Discord server can sign in and purchase. They do **not** need the customer role before buying.
+- Card payments use **Stripe Checkout**. Raw card numbers never pass through or get stored by this app.
+- Litecoin payments use **NOWPayments** and `LTC` specifically.
+- Successful purchases automatically create or extend an Axiom license tied to the signed-in Discord ID.
+- Purchased keys are encrypted at rest so the full key can remain visible under **My License** on the account.
+- The first client activation binds the key to its Axiom client ID/HWID value.
+- Dashboard shows the license key, plan, expiration, status, HWID/client ID, and last-seen time.
+- Existing owner-generated keys and key redemption still work.
+- Optional Discord bot role grant automatically assigns the configured Customer role after a confirmed purchase.
+- Device reset only clears Axiom's own stored device binding. It does not spoof or alter Windows hardware identifiers.
 
-The HWID utility only resets the **Axiom license binding stored in this website database**. It does not spoof Windows hardware IDs or bypass third-party bans/anti-cheat systems.
-
-## 1. Put your client JAR in the project
-
-Place the real JAR here:
-
-```text
-protected/Axiom-Client.jar
-```
-
-`protected/*.jar` is ignored by Git by default. If you intentionally want the JAR in a **private** GitHub repository, remove that ignore rule first.
-
-## 2. Render basics
+## Deploy on Render
 
 Use:
 
@@ -44,105 +26,100 @@ Build Command: npm install
 Start Command: npm start
 ```
 
-Create a PostgreSQL database on Render in the same region as the web service. Add its **Internal Database URL** to the web service as `DATABASE_URL`.
-
-## 3. Required Render environment variables
+Put your client JAR at:
 
 ```text
-NODE_ENV=production
-DATABASE_SSL=false
-ADMIN_PASSWORD=YOUR_PRIVATE_OWNER_PASSWORD
-JWT_SECRET=YOUR_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS
-PUBLIC_DISCORD_URL=https://discord.gg/YOURINVITE
-PUBLIC_CLIENT_VERSION=1.0.0
-PUBLIC_CLIENT_UPDATED=Sep 15, 2026
-DOWNLOAD_FILENAME=Axiom-Client.jar
+protected/Axiom-Client.jar
 ```
 
-Optional purchase/store destinations:
+Create a Render PostgreSQL database and use its Internal Database URL as `DATABASE_URL`.
+
+## Discord values for this Axiom setup
+
+These IDs are already known for your server:
 
 ```text
-PUBLIC_MONTHLY_URL=/dashboard?tab=redeem
-PUBLIC_LIFETIME_URL=/dashboard?tab=redeem
-PUBLIC_DEVICE_SLOT_URL=/dashboard?tab=utilities
+DISCORD_CLIENT_ID=1549504783944126494
+DISCORD_GUILD_ID=1546629727542976614
+DISCORD_ALLOWED_ROLE_IDS=1546629727979307139
+DISCORD_CUSTOMER_ROLE_ID=1546629727979307139
+DISCORD_OWNER_ROLE_IDS=1546629728004210731
+DISCORD_REDIRECT_URI=https://axiomclient-1.onrender.com/auth/discord/callback
+PUBLIC_SITE_URL=https://axiomclient-1.onrender.com
 ```
 
-## 4. Discord OAuth + role setup
+Keep `DISCORD_CLIENT_SECRET` private and use a newly regenerated value because any secret previously pasted into chat should be treated as exposed.
 
-Create or open an application in the Discord Developer Portal.
+If you want the customer role to be granted automatically after payment, add `DISCORD_BOT_TOKEN` and give the bot **Manage Roles** permission. The bot's highest role must be above the Customer role in Discord's role list.
 
-Under OAuth2, add this redirect URL exactly:
+## Stripe card checkout
+
+Create two Stripe Prices:
+
+- Monthly: recurring monthly price, e.g. `$15.99`.
+- Lifetime: one-time price, e.g. `$25.99`.
+
+Set:
 
 ```text
-https://YOUR-RENDER-NAME.onrender.com/auth/discord/callback
+STRIPE_SECRET_KEY=sk_...
+STRIPE_MONTHLY_PRICE_ID=price_...
+STRIPE_LIFETIME_PRICE_ID=price_...
 ```
 
-Then add these Render variables:
+Create a Stripe webhook endpoint pointing to:
 
 ```text
-DISCORD_CLIENT_ID=your_application_client_id
-DISCORD_CLIENT_SECRET=your_application_client_secret
-DISCORD_GUILD_ID=your_discord_server_id
-DISCORD_ALLOWED_ROLE_IDS=role_id_1,role_id_2
-DISCORD_OWNER_ROLE_IDS=owner_role_id_1,owner_role_id_2
-DISCORD_REDIRECT_URI=https://YOUR-RENDER-NAME.onrender.com/auth/discord/callback
+https://axiomclient-1.onrender.com/api/payments/stripe/webhook
 ```
 
-`DISCORD_ALLOWED_ROLE_IDS` controls who can enter `/dashboard`.
-
-`DISCORD_OWNER_ROLE_IDS` lets those roles enter the owner API/panel after Discord login. The password login at `/owner` also continues to work.
-
-To copy a Discord server/role ID, enable Discord Developer Mode, then right-click the server or role and choose **Copy ID**.
-
-## 5. Dashboard flow
-
-1. User opens `/dashboard`.
-2. User clicks **Continue with Discord**.
-3. The site verifies that the user is in your configured server and has an allowed role.
-4. User opens **Redeem Key**.
-5. User enters an Axiom key and client ID.
-6. The key becomes linked to that Discord user and client ID.
-7. The Downloads page creates a short-lived download ticket and serves `protected/Axiom-Client.jar`.
-
-## 6. Owner key generator
-
-Open:
+Subscribe at minimum to:
 
 ```text
-https://YOUR-SITE/owner
+checkout.session.completed
+invoice.paid
+customer.subscription.deleted
 ```
 
-You can generate a key for minutes, hours, days, weeks, or months. You can optionally pre-bind the key to a client ID or Discord user ID.
+Copy the webhook signing secret into:
 
-The raw key is shown once. PostgreSQL stores only its SHA-256 hash and a short preview.
-
-## 7. Minecraft client license check
-
-The client should periodically call:
-
-```http
-POST /api/license/check
-Content-Type: application/json
+```text
+STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
-```json
-{
-  "key": "AXIOM-...",
-  "clientId": "the-client-id"
-}
+The site redirects customers to Stripe's hosted Checkout page, so this app never receives or stores raw card details.
+
+## Litecoin checkout
+
+Create a NOWPayments account, configure your payout wallet, generate an API key, and generate an IPN secret. Add:
+
+```text
+NOWPAYMENTS_API_KEY=...
+NOWPAYMENTS_IPN_SECRET=...
 ```
 
-An expired/revoked/mismatched license returns `valid: false`.
+The app creates a payment with `pay_currency=ltc`, displays the exact LTC amount and address, polls payment status, and also accepts signed IPN callbacks at:
 
-See `client-integration/AxiomLicenseClient.java` for the included example.
+```text
+https://axiomclient-1.onrender.com/api/payments/nowpayments/ipn
+```
 
-## Important secret handling
+A Litecoin monthly purchase grants 30 days. A Litecoin lifetime purchase grants lifetime access.
 
-Never put these in public GitHub source:
+## Required Render variables
 
-- `ADMIN_PASSWORD`
-- `JWT_SECRET`
-- `DATABASE_URL`
-- `DISCORD_CLIENT_SECRET`
+See `.env.example` or `render.env.example`. Do not put secrets in a public GitHub repository.
 
-Keep them in Render Environment Variables.
+## License / HWID flow
+
+1. Customer signs in with Discord.
+2. Customer buys Monthly or Lifetime with card or LTC, or redeems an owner-issued key.
+3. Payment webhook confirms the payment server-side.
+4. The site creates/extends the account's Axiom license.
+5. **My License** displays the key.
+6. Customer downloads Axiom from the account.
+7. The Minecraft client calls `/api/license/activate` with the license key and its client-ID/HWID value.
+8. The server binds that ID to the license.
+9. Future `/api/license/check` calls fail if the license is expired, revoked, or presented from a different bound client ID.
+
+See `client-integration/AxiomLicenseClient.java` for the included Java example.

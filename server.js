@@ -7,6 +7,7 @@ const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
+const Stripe = require('stripe');
 const { pool, initDb } = require('./db');
 
 const app = express();
@@ -23,6 +24,20 @@ const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || '';
 const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID || '';
 const allowedRoleIds = splitIds(process.env.DISCORD_ALLOWED_ROLE_IDS || '');
 const ownerRoleIds = splitIds(process.env.DISCORD_OWNER_ROLE_IDS || '');
+const DISCORD_CUSTOMER_ROLE_ID = process.env.DISCORD_CUSTOMER_ROLE_ID || allowedRoleIds[0] || '';
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
+
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
+const STRIPE_MONTHLY_PRICE_ID = process.env.STRIPE_MONTHLY_PRICE_ID || '';
+const STRIPE_LIFETIME_PRICE_ID = process.env.STRIPE_LIFETIME_PRICE_ID || '';
+const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
+
+const NOWPAYMENTS_API_KEY = process.env.NOWPAYMENTS_API_KEY || '';
+const NOWPAYMENTS_IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || '';
+const MONTHLY_PRICE_USD = Number(process.env.MONTHLY_PRICE_USD || '15.99');
+const LIFETIME_PRICE_USD = Number(process.env.LIFETIME_PRICE_USD || '25.99');
+const LICENSE_ENCRYPTION_KEY = process.env.LICENSE_ENCRYPTION_KEY || JWT_SECRET;
 
 if (!process.env.DATABASE_URL) {
   console.error('Missing DATABASE_URL');
@@ -52,9 +67,13 @@ app.use(helmet({
     }
   }
 }));
+// Stripe must receive the unmodified raw request body for webhook signature verification.
+app.post('/api/payments/stripe/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
+
 app.use(express.json({ limit: '512kb' }));
 app.use(express.urlencoded({ extended: false }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.get('/index.html', (req, res) => res.redirect('/'));
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 const authLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 const licenseLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false });
@@ -73,6 +92,204 @@ function generateLicenseKey() {
   for (let i = 0; i < 32; i++) raw += alphabet[bytes[i] % alphabet.length];
   return `AXIOM-${raw.match(/.{1,8}/g).join('-')}`;
 }
+
+function encryptionKey() {
+  return crypto.createHash('sha256').update(String(LICENSE_ENCRYPTION_KEY)).digest();
+}
+function encryptLicenseKey(value) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+function decryptLicenseKey(value) {
+  if (!value) return null;
+  try {
+    const [ivText, tagText, dataText] = String(value).split('.');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(ivText, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tagText, 'base64url'));
+    return Buffer.concat([decipher.update(Buffer.from(dataText, 'base64url')), decipher.final()]).toString('utf8');
+  } catch { return null; }
+}
+function planAmount(plan) {
+  return plan === 'monthly' ? MONTHLY_PRICE_USD : plan === 'lifetime' ? LIFETIME_PRICE_USD : null;
+}
+function lifetimeExpiry() { return new Date('2126-01-01T00:00:00.000Z'); }
+function addDays(date, days) { return new Date(new Date(date).getTime() + days * 86400000); }
+function sortObject(value) {
+  if (Array.isArray(value)) return value.map(sortObject);
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().reduce((out, key) => { out[key] = sortObject(value[key]); return out; }, {});
+  }
+  return value;
+}
+function nowPaymentsSignatureIsValid(body, signature) {
+  if (!NOWPAYMENTS_IPN_SECRET || !signature) return false;
+  const expected = crypto.createHmac('sha512', NOWPAYMENTS_IPN_SECRET).update(JSON.stringify(sortObject(body))).digest('hex');
+  return safeEqualText(expected, signature);
+}
+function publicBaseUrl(req) {
+  return (process.env.PUBLIC_SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+}
+async function grantCustomerRole(discordUserId) {
+  if (!DISCORD_BOT_TOKEN || !DISCORD_GUILD_ID || !DISCORD_CUSTOMER_ROLE_ID || !discordUserId) return { ok: false, skipped: true };
+  try {
+    const response = await fetch(`https://discord.com/api/v10/guilds/${DISCORD_GUILD_ID}/members/${discordUserId}/roles/${DISCORD_CUSTOMER_ROLE_ID}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` }
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn('Discord role grant failed:', response.status, text.slice(0, 300));
+      return { ok: false, status: response.status };
+    }
+    try {
+      const sessions = await pool.query(`SELECT id,roles FROM web_sessions WHERE discord_user_id=$1 AND expires_at>NOW()`, [discordUserId]);
+      for (const row of sessions.rows) {
+        const roles = Array.isArray(row.roles) ? row.roles : [];
+        if (!roles.includes(DISCORD_CUSTOMER_ROLE_ID)) {
+          roles.push(DISCORD_CUSTOMER_ROLE_ID);
+          await pool.query(`UPDATE web_sessions SET roles=$1::jsonb WHERE id=$2`, [JSON.stringify(roles), row.id]);
+        }
+      }
+    } catch (sessionErr) { console.warn('Could not refresh local Discord role cache:', sessionErr.message); }
+    return { ok: true };
+  } catch (err) {
+    console.warn('Discord role grant failed:', err.message);
+    return { ok: false };
+  }
+}
+async function fulfillOrder(orderId, options = {}) {
+  const client = await pool.connect();
+  let resultForUser = null;
+  try {
+    await client.query('BEGIN');
+    const orderResult = await client.query(`SELECT * FROM payment_orders WHERE id = $1 FOR UPDATE`, [orderId]);
+    if (!orderResult.rowCount) throw new Error('Payment order not found.');
+    const order = orderResult.rows[0];
+
+    const existingResult = await client.query(
+      `SELECT * FROM licenses WHERE discord_user_id = $1 AND revoked = FALSE ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+      [order.discord_user_id]
+    );
+    let license = existingResult.rows[0] || null;
+
+    let targetExpiry;
+    if (order.plan === 'lifetime') targetExpiry = lifetimeExpiry();
+    else if (options.periodEnd) targetExpiry = new Date(Number(options.periodEnd) * 1000);
+    else {
+      const start = license && new Date(license.expires_at).getTime() > Date.now() ? new Date(license.expires_at) : new Date();
+      targetExpiry = addDays(start, 30);
+    }
+
+    if (order.fulfilled_at && license) {
+      await client.query('COMMIT');
+      resultForUser = { licenseId: license.id, key: decryptLicenseKey(license.key_ciphertext), expiresAt: license.expires_at, discordUserId: order.discord_user_id };
+      await grantCustomerRole(order.discord_user_id);
+      return resultForUser;
+    }
+
+    const paymentReference = options.subscriptionId || options.providerId || order.provider_subscription_id || order.provider_id || order.id;
+    if (license && license.key_ciphertext) {
+      const newType = (license.license_type === 'lifetime' || order.plan === 'lifetime') ? 'lifetime' : 'monthly';
+      if (newType === 'lifetime') targetExpiry = lifetimeExpiry();
+      const updated = await client.query(
+        `UPDATE licenses SET expires_at = CASE WHEN $1 = 'lifetime' THEN $2 ELSE GREATEST(expires_at, $2) END,
+         license_type = $1, payment_provider = $3, payment_reference = $4, note = $5
+         WHERE id = $6 RETURNING *`,
+        [newType, targetExpiry, order.provider, paymentReference, `${order.provider} ${order.plan} purchase`, license.id]
+      );
+      license = updated.rows[0];
+    } else {
+      const key = generateLicenseKey();
+      const inserted = await client.query(
+        `INSERT INTO licenses (key_hash,key_preview,key_ciphertext,discord_user_id,expires_at,note,license_type,payment_provider,payment_reference)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [hashKey(key), `${key.slice(0, 14)}…`, encryptLicenseKey(key), order.discord_user_id, targetExpiry,
+         `${order.provider} ${order.plan} purchase`, order.plan === 'lifetime' ? 'lifetime' : 'monthly', order.provider, paymentReference]
+      );
+      license = inserted.rows[0];
+    }
+
+    await client.query(
+      `UPDATE payment_orders SET status = 'finished', fulfilled_at = COALESCE(fulfilled_at, NOW()),
+       provider_id = COALESCE($2, provider_id), provider_subscription_id = COALESCE($3, provider_subscription_id),
+       raw_status = COALESCE($4::jsonb, raw_status), updated_at = NOW() WHERE id = $1`,
+      [order.id, options.providerId || null, options.subscriptionId || null, options.raw ? JSON.stringify(options.raw) : null]
+    );
+    await client.query('COMMIT');
+    resultForUser = { licenseId: license.id, key: decryptLicenseKey(license.key_ciphertext), expiresAt: license.expires_at, discordUserId: order.discord_user_id };
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw err;
+  } finally { client.release(); }
+
+  if (resultForUser?.discordUserId) await grantCustomerRole(resultForUser.discordUserId);
+  return resultForUser;
+}
+async function extendStripeSubscription(subscription) {
+  if (!subscription) return;
+  const orderId = subscription.metadata?.orderId;
+  if (!orderId) return;
+  const periodEnd = subscription.current_period_end;
+  if (!periodEnd) return;
+  const orderResult = await pool.query(`SELECT discord_user_id FROM payment_orders WHERE id = $1 LIMIT 1`, [orderId]);
+  if (!orderResult.rowCount) return;
+  await pool.query(
+    `UPDATE licenses SET expires_at = GREATEST(expires_at, $1), payment_provider = 'stripe', payment_reference = $2, license_type = 'monthly'
+     WHERE discord_user_id = $3 AND revoked = FALSE AND license_type <> 'lifetime'`,
+    [new Date(Number(periodEnd) * 1000), subscription.id, orderResult.rows[0].discord_user_id]
+  );
+}
+async function handleStripeWebhook(req, res) {
+  if (!stripe || !STRIPE_WEBHOOK_SECRET) return res.status(503).send('Stripe webhook is not configured.');
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.warn('Stripe webhook signature failed:', err.message);
+    return res.status(400).send('Invalid Stripe signature.');
+  }
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const orderId = session.metadata?.orderId;
+      if (orderId && session.payment_status === 'paid') {
+        let periodEnd = null;
+        let subscriptionId = null;
+        if (session.mode === 'subscription' && session.subscription) {
+          subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription.id;
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          periodEnd = subscription.current_period_end || null;
+        }
+        await fulfillOrder(orderId, { providerId: session.id, subscriptionId, periodEnd, raw: session });
+      }
+    } else if (event.type === 'invoice.paid') {
+      const invoice = event.data.object;
+      const subscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id || invoice.parent?.subscription_details?.subscription;
+      if (subscriptionId) {
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        await extendStripeSubscription(subscription);
+      }
+    } else if (event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object;
+      const orderId = subscription.metadata?.orderId;
+      if (orderId) {
+        const order = await pool.query(`SELECT discord_user_id FROM payment_orders WHERE id = $1 LIMIT 1`, [orderId]);
+        if (order.rowCount) {
+          const end = subscription.current_period_end ? new Date(Number(subscription.current_period_end) * 1000) : new Date();
+          await pool.query(`UPDATE licenses SET expires_at = LEAST(expires_at, $1) WHERE discord_user_id = $2 AND payment_reference = $3 AND license_type <> 'lifetime'`, [end, order.rows[0].discord_user_id, subscription.id]);
+        }
+      }
+    }
+    return res.json({ received: true });
+  } catch (err) {
+    console.error('Stripe webhook processing failed:', err);
+    return res.status(500).send('Webhook processing failed.');
+  }
+}
+
 function safeEqualText(a, b) {
   const aa = Buffer.from(String(a));
   const bb = Buffer.from(String(b));
@@ -121,8 +338,9 @@ function roleMatch(roles, required) {
 function hasDashboardRole(roles) { return roleMatch(roles, [...allowedRoleIds, ...ownerRoleIds]); }
 function hasOwnerRole(roles) { return roleMatch(roles, ownerRoleIds); }
 function discordConfigured() {
-  return Boolean(DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET && DISCORD_GUILD_ID && (allowedRoleIds.length || ownerRoleIds.length));
+  return Boolean(DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET && DISCORD_GUILD_ID);
 }
+
 function callbackUrl(req) {
   return process.env.DISCORD_REDIRECT_URI || `${req.protocol}://${req.get('host')}/auth/discord/callback`;
 }
@@ -153,7 +371,6 @@ async function requireUser(req, res, next) {
   try {
     const session = await getSession(req);
     if (!session) return res.status(401).json({ error: 'Sign in with Discord first.' });
-    if (!session.hasAccess) return res.status(403).json({ error: 'Your Discord account does not have the required Axiom role.' });
     req.userSession = session;
     next();
   } catch (err) { next(err); }
@@ -202,9 +419,9 @@ app.get('/api/config', (req, res) => {
     discordUrl: process.env.PUBLIC_DISCORD_URL || '#',
     version: process.env.PUBLIC_CLIENT_VERSION || '1.0.0',
     updated: process.env.PUBLIC_CLIENT_UPDATED || 'Latest',
-    monthlyUrl: process.env.PUBLIC_MONTHLY_URL || '/dashboard?tab=redeem',
-    lifetimeUrl: process.env.PUBLIC_LIFETIME_URL || '/dashboard?tab=redeem',
-    deviceSlotUrl: process.env.PUBLIC_DEVICE_SLOT_URL || '/dashboard?tab=redeem',
+    monthlyUrl: '/dashboard?tab=purchase&plan=monthly',
+    lifetimeUrl: '/dashboard?tab=purchase&plan=lifetime',
+    deviceSlotUrl: '/dashboard?tab=license',
     discordLoginConfigured: discordConfigured()
   });
 });
@@ -260,7 +477,6 @@ app.get('/auth/discord/callback', authLimiter, async (req, res, next) => {
     const user = await userResponse.json();
     const member = await memberResponse.json();
     const roles = Array.isArray(member.roles) ? member.roles : [];
-    if (!hasDashboardRole(roles)) return res.redirect(`${nextPath}?error=missing_role`);
 
     const rawSession = crypto.randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -291,6 +507,165 @@ app.get('/api/auth/me', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+
+app.get('/api/payments/config', requireUser, (req, res) => {
+  res.json({
+    stripeConfigured: Boolean(stripe && STRIPE_MONTHLY_PRICE_ID && STRIPE_LIFETIME_PRICE_ID && STRIPE_WEBHOOK_SECRET),
+    ltcConfigured: Boolean(NOWPAYMENTS_API_KEY && NOWPAYMENTS_IPN_SECRET),
+    monthlyPriceUsd: MONTHLY_PRICE_USD,
+    lifetimePriceUsd: LIFETIME_PRICE_USD,
+    monthlyLabel: '30 days / recurring by card',
+    lifetimeLabel: 'Lifetime access'
+  });
+});
+
+app.post('/api/payments/stripe/checkout', requireUser, writeLimiter, async (req, res, next) => {
+  try {
+    if (!stripe) return res.status(503).json({ error: 'Stripe is not configured yet.' });
+    const plan = String(req.body.plan || '');
+    if (!['monthly', 'lifetime'].includes(plan)) return res.status(400).json({ error: 'Invalid plan.' });
+    const existing = await pool.query(`SELECT license_type,payment_provider,payment_reference FROM licenses WHERE discord_user_id=$1 AND revoked=FALSE AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1`, [req.userSession.id]);
+    if (existing.rows[0]?.license_type === 'lifetime') return res.status(409).json({ error: 'This account already has lifetime Axiom access.' });
+    if (plan === 'monthly' && existing.rows[0]?.license_type === 'monthly' && existing.rows[0]?.payment_provider === 'stripe' && String(existing.rows[0]?.payment_reference || '').startsWith('sub_')) {
+      return res.status(409).json({ error: 'This account already has an active Stripe monthly subscription.' });
+    }
+    const priceId = plan === 'monthly' ? STRIPE_MONTHLY_PRICE_ID : STRIPE_LIFETIME_PRICE_ID;
+    if (!priceId) return res.status(503).json({ error: `Stripe ${plan} Price ID is not configured.` });
+
+    const orderId = crypto.randomUUID();
+    const amount = planAmount(plan);
+    await pool.query(
+      `INSERT INTO payment_orders (id,discord_user_id,provider,plan,amount_usd,status) VALUES ($1,$2,'stripe',$3,$4,'created')`,
+      [orderId, req.userSession.id, plan, amount]
+    );
+
+    const base = publicBaseUrl(req);
+    const sessionOptions = {
+      mode: plan === 'monthly' ? 'subscription' : 'payment',
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${base}/dashboard?tab=license&purchase=success`,
+      cancel_url: `${base}/dashboard?tab=purchase&purchase=cancelled`,
+      client_reference_id: req.userSession.id,
+      metadata: { orderId, discordUserId: req.userSession.id, plan },
+      allow_promotion_codes: true
+    };
+    if (plan === 'monthly') {
+      sessionOptions.subscription_data = { metadata: { orderId, discordUserId: req.userSession.id, plan } };
+    }
+    const session = await stripe.checkout.sessions.create(sessionOptions);
+    await pool.query(`UPDATE payment_orders SET provider_id = $2, status = 'checkout', updated_at = NOW() WHERE id = $1`, [orderId, session.id]);
+    res.json({ url: session.url, orderId });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/payments/ltc/checkout', requireUser, writeLimiter, async (req, res, next) => {
+  try {
+    if (!NOWPAYMENTS_API_KEY || !NOWPAYMENTS_IPN_SECRET) return res.status(503).json({ error: 'Litecoin payments are not configured yet.' });
+    const plan = String(req.body.plan || '');
+    if (!['monthly', 'lifetime'].includes(plan)) return res.status(400).json({ error: 'Invalid plan.' });
+    const existing = await pool.query(`SELECT license_type FROM licenses WHERE discord_user_id=$1 AND revoked=FALSE AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1`, [req.userSession.id]);
+    if (existing.rows[0]?.license_type === 'lifetime') return res.status(409).json({ error: 'This account already has lifetime Axiom access.' });
+    const amount = planAmount(plan);
+    const orderId = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO payment_orders (id,discord_user_id,provider,plan,amount_usd,status,pay_currency) VALUES ($1,$2,'nowpayments',$3,$4,'created','ltc')`,
+      [orderId, req.userSession.id, plan, amount]
+    );
+
+    const base = publicBaseUrl(req);
+    const response = await fetch('https://api.nowpayments.io/v1/payment', {
+      method: 'POST',
+      headers: { 'x-api-key': NOWPAYMENTS_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        price_amount: amount,
+        price_currency: 'usd',
+        pay_currency: 'ltc',
+        ipn_callback_url: `${base}/api/payments/nowpayments/ipn`,
+        order_id: orderId,
+        order_description: `Axiom Client ${plan === 'monthly' ? '30-day' : 'Lifetime'} access`
+      })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.payment_id) {
+      await pool.query(`UPDATE payment_orders SET status = 'failed', raw_status = $2::jsonb, updated_at = NOW() WHERE id = $1`, [orderId, JSON.stringify(data)]);
+      return res.status(502).json({ error: data.message || 'Could not create Litecoin payment.' });
+    }
+    await pool.query(
+      `UPDATE payment_orders SET provider_id = $2, status = $3, pay_amount = $4, pay_address = $5, raw_status = $6::jsonb, updated_at = NOW() WHERE id = $1`,
+      [orderId, String(data.payment_id), data.payment_status || 'waiting', String(data.pay_amount || ''), data.pay_address || '', JSON.stringify(data)]
+    );
+    res.json({
+      orderId,
+      paymentId: String(data.payment_id),
+      status: data.payment_status || 'waiting',
+      payAmount: String(data.pay_amount || ''),
+      payAddress: data.pay_address || '',
+      payCurrency: 'LTC',
+      priceUsd: amount
+    });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/payments/nowpayments/ipn', async (req, res, next) => {
+  try {
+    const signature = String(req.get('x-nowpayments-sig') || '');
+    if (!nowPaymentsSignatureIsValid(req.body, signature)) return res.status(401).send('Invalid NOWPayments signature.');
+    const orderId = String(req.body.order_id || '');
+    if (!orderId) return res.status(400).send('Missing order ID.');
+    const status = String(req.body.payment_status || 'unknown');
+    const result = await pool.query(`SELECT id FROM payment_orders WHERE id = $1 AND provider = 'nowpayments' LIMIT 1`, [orderId]);
+    if (!result.rowCount) return res.status(404).send('Order not found.');
+    await pool.query(
+      `UPDATE payment_orders SET status=$2, provider_id=COALESCE($3,provider_id), pay_amount=COALESCE($4,pay_amount),
+       pay_address=COALESCE($5,pay_address), raw_status=$6::jsonb, updated_at=NOW() WHERE id=$1`,
+      [orderId, status, req.body.payment_id ? String(req.body.payment_id) : null, req.body.pay_amount ? String(req.body.pay_amount) : null, req.body.pay_address || null, JSON.stringify(req.body)]
+    );
+    if (status === 'finished') await fulfillOrder(orderId, { providerId: req.body.payment_id ? String(req.body.payment_id) : null, raw: req.body });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+app.get('/api/payments/ltc/status/:orderId', requireUser, async (req, res, next) => {
+  try {
+    const orderId = String(req.params.orderId || '');
+    let orderResult = await pool.query(`SELECT * FROM payment_orders WHERE id=$1 AND discord_user_id=$2 AND provider='nowpayments' LIMIT 1`, [orderId, req.userSession.id]);
+    if (!orderResult.rowCount) return res.status(404).json({ error: 'Payment not found.' });
+    let order = orderResult.rows[0];
+
+    if (NOWPAYMENTS_API_KEY && order.provider_id && order.status !== 'finished') {
+      try {
+        const remote = await fetch(`https://api.nowpayments.io/v1/payment/${encodeURIComponent(order.provider_id)}`, { headers: { 'x-api-key': NOWPAYMENTS_API_KEY } });
+        if (remote.ok) {
+          const data = await remote.json();
+          const status = String(data.payment_status || order.status);
+          await pool.query(
+            `UPDATE payment_orders SET status=$2,pay_amount=COALESCE($3,pay_amount),pay_address=COALESCE($4,pay_address),raw_status=$5::jsonb,updated_at=NOW() WHERE id=$1`,
+            [orderId, status, data.pay_amount ? String(data.pay_amount) : null, data.pay_address || null, JSON.stringify(data)]
+          );
+          if (status === 'finished') await fulfillOrder(orderId, { providerId: String(data.payment_id || order.provider_id), raw: data });
+          order.status = status;
+          order.pay_amount = data.pay_amount ? String(data.pay_amount) : order.pay_amount;
+          order.pay_address = data.pay_address || order.pay_address;
+        }
+      } catch (pollErr) { console.warn('NOWPayments status poll failed:', pollErr.message); }
+    }
+
+    const refreshed = await pool.query(`SELECT status,pay_amount,pay_address,fulfilled_at FROM payment_orders WHERE id=$1 LIMIT 1`, [orderId]);
+    res.json({ orderId, ...refreshed.rows[0], payCurrency: 'LTC' });
+  } catch (err) { next(err); }
+});
+
+app.get('/api/payments/orders', requireUser, async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      `SELECT id,provider,plan,amount_usd,status,pay_currency,pay_amount,pay_address,fulfilled_at,created_at,updated_at
+       FROM payment_orders WHERE discord_user_id=$1 ORDER BY created_at DESC LIMIT 25`,
+      [req.userSession.id]
+    );
+    res.json({ orders: result.rows });
+  } catch (err) { next(err); }
+});
+
 app.post('/api/admin/login', authLimiter, (req, res) => {
   const password = String(req.body.password || '');
   if (!safeEqualText(password, ADMIN_PASSWORD)) return res.status(401).json({ error: 'Incorrect owner password.' });
@@ -312,8 +687,8 @@ app.post('/api/admin/licenses', adminOnly, async (req, res, next) => {
       key = generateLicenseKey();
       try {
         await pool.query(
-          `INSERT INTO licenses (key_hash, key_preview, client_id, discord_user_id, expires_at, note) VALUES ($1,$2,$3,$4,$5,$6)`,
-          [hashKey(key), `${key.slice(0, 14)}…`, requestedClientId || null, discordUserId || null, expiresAt, note]
+          `INSERT INTO licenses (key_hash, key_preview, key_ciphertext, client_id, discord_user_id, expires_at, note, license_type) VALUES ($1,$2,$3,$4,$5,$6,$7,'manual')`,
+          [hashKey(key), `${key.slice(0, 14)}…`, encryptLicenseKey(key), requestedClientId || null, discordUserId || null, expiresAt, note]
         );
         inserted = true;
       } catch (err) { if (err.code !== '23505') throw err; }
@@ -369,11 +744,15 @@ app.post('/api/license/check', licenseLimiter, async (req, res, next) => {
 app.get('/api/dashboard/license', requireUser, async (req, res, next) => {
   try {
     const result = await pool.query(`
-      SELECT id,key_preview,client_id,expires_at,revoked,note,created_at,activated_at,last_seen_at,
+      SELECT id,key_preview,key_ciphertext,client_id,expires_at,revoked,note,license_type,payment_provider,payment_reference,created_at,activated_at,last_seen_at,
       (expires_at > NOW() AND revoked = FALSE) AS active
       FROM licenses WHERE discord_user_id = $1 ORDER BY created_at DESC LIMIT 1
     `, [req.userSession.id]);
-    res.json({ license: result.rows[0] || null });
+    if (!result.rowCount) return res.json({ license: null });
+    const license = result.rows[0];
+    license.key = decryptLicenseKey(license.key_ciphertext);
+    delete license.key_ciphertext;
+    res.json({ license });
   } catch (err) { next(err); }
 });
 app.post('/api/dashboard/redeem', requireUser, licenseLimiter, async (req, res, next) => {
@@ -393,8 +772,7 @@ app.post('/api/dashboard/download-ticket', requireUser, async (req, res, next) =
     const result = await pool.query(`SELECT id,client_id,expires_at,revoked FROM licenses WHERE discord_user_id = $1 AND expires_at > NOW() AND revoked = FALSE ORDER BY created_at DESC LIMIT 1`, [req.userSession.id]);
     if (!result.rowCount) return res.status(403).json({ error: 'No active Axiom license is linked to this Discord account.' });
     const license = result.rows[0];
-    if (!license.client_id) return res.status(403).json({ error: 'Redeem your key and bind a client ID first.' });
-    const ticket = jwt.sign({ type: 'download', licenseId: license.id, clientId: license.client_id }, JWT_SECRET, { expiresIn: '10m' });
+    const ticket = jwt.sign({ type: 'download-account', licenseId: license.id, discordUserId: req.userSession.id }, JWT_SECRET, { expiresIn: '10m' });
     res.json({ ticket });
   } catch (err) { next(err); }
 });
@@ -475,19 +853,30 @@ app.get('/api/download/windows', licenseLimiter, async (req, res, next) => {
     let payload;
     try {
       payload = jwt.verify(String(req.query.ticket || ''), JWT_SECRET);
-      if (payload.type !== 'download') throw new Error('bad type');
+      if (!['download','download-account'].includes(payload.type)) throw new Error('bad type');
     } catch { return res.status(401).send('Invalid or expired download ticket.'); }
     const result = await pool.query(`SELECT id,client_id,expires_at,revoked FROM licenses WHERE id = $1 LIMIT 1`, [payload.licenseId]);
     if (!result.rowCount) return res.status(404).send('License not found.');
     const license = result.rows[0];
     if (license.revoked || new Date(license.expires_at).getTime() <= Date.now()) return res.status(403).send('License is no longer active.');
-    if (license.client_id !== payload.clientId) return res.status(403).send('Client ID mismatch.');
+    if (payload.type === 'download' && license.client_id !== payload.clientId) return res.status(403).send('Client ID mismatch.');
+    if (payload.type === 'download-account') {
+      const owner = await pool.query(`SELECT discord_user_id FROM licenses WHERE id = $1 LIMIT 1`, [payload.licenseId]);
+      if (!owner.rowCount || owner.rows[0].discord_user_id !== payload.discordUserId) return res.status(403).send('Account mismatch.');
+    }
     const filePath = path.join(__dirname, 'protected', DOWNLOAD_FILENAME);
     if (!fs.existsSync(filePath)) return res.status(503).send(`Owner setup incomplete: add ${DOWNLOAD_FILENAME} to the protected folder on the server.`);
     res.download(filePath, DOWNLOAD_FILENAME);
   } catch (err) { next(err); }
 });
 
+app.get('/', async (req, res, next) => {
+  try {
+    const session = await getSession(req);
+    if (!session) return res.sendFile(path.join(__dirname, 'public', 'login.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  } catch (err) { next(err); }
+});
 app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
 app.get('/owner', (req, res) => res.sendFile(path.join(__dirname, 'public', 'owner.html')));
 

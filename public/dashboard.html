@@ -14,7 +14,7 @@
       <img src="/assets/axiom-logo.png" alt="Axiom Client">
       <div class="eyebrow">AXIOM DASHBOARD</div>
       <h1>Sign in with Discord</h1>
-      <p>Your Discord account must have one of the roles configured by the Axiom owners before this dashboard unlocks.</p>
+      <p>Sign in with your Discord account to access purchases, your license key, downloads, and device binding.</p>
       <div id="loginError" class="status error"></div>
       <a class="pill discord-login" href="/auth/discord?next=/dashboard">Continue with Discord</a>
       <a class="text-link" href="/">← Back to Axiom Client</a>
@@ -24,8 +24,12 @@
   <div id="dashApp" class="dash-app hidden">
     <aside class="sidebar">
       <a class="sidebar-logo" href="/"><img src="/assets/axiom-logo.png" alt="Axiom"></a>
+      <div class="side-group"><small>Account</small>
+        <button data-tab="purchase" class="side-item active"><span>◇</span>Purchase</button>
+        <button data-tab="license" class="side-item"><span>⌁</span>My License</button>
+      </div>
       <div class="side-group"><small>Client</small>
-        <button data-tab="downloads" class="side-item active"><span>⇩</span>Downloads</button>
+        <button data-tab="downloads" class="side-item"><span>⇩</span>Downloads</button>
         <button data-tab="updates" class="side-item"><span>↻</span>Updates</button>
         <button data-tab="redeem" class="side-item"><span>⚿</span>Redeem Key</button>
       </div>
@@ -45,7 +49,51 @@
     </aside>
 
     <main class="dash-main">
-      <section id="tab-downloads" class="dash-tab active">
+
+      <section id="tab-purchase" class="dash-tab active">
+        <div class="page-title"><span>ACCESS</span><h1>Purchase Axiom</h1><p>Choose a plan, then pay securely by card through Stripe or with Litecoin.</p></div>
+        <div id="purchaseNotice" class="status"></div>
+        <div class="purchase-grid">
+          <article class="panel-blue purchase-card">
+            <div class="purchase-kicker">MONTHLY</div><h2>Axiom+ Monthly</h2><div class="dash-price">$<b id="monthlyPrice">15.99</b><span>/month</span></div>
+            <p>Recurring card subscription. Litecoin purchases grant 30 days of access per payment.</p>
+            <div class="pay-actions"><button class="pill primary-soft pay-card" data-plan="monthly">Pay with Card</button><button class="pill outline pay-ltc" data-plan="monthly">Pay with LTC</button></div>
+          </article>
+          <article class="panel-blue purchase-card featured">
+            <div class="purchase-kicker">LIFETIME</div><h2>Axiom+ Lifetime</h2><div class="dash-price">$<b id="lifetimePrice">25.99</b><span>one time</span></div>
+            <p>One payment, permanent license access for this Axiom account.</p>
+            <div class="pay-actions"><button class="pill primary-soft pay-card" data-plan="lifetime">Pay with Card</button><button class="pill outline pay-ltc" data-plan="lifetime">Pay with LTC</button></div>
+          </article>
+        </div>
+        <div id="ltcPaymentBox" class="panel-blue ltc-box hidden">
+          <div class="utility-head"><div class="utility-icon">Ł</div><div><h2>Litecoin payment</h2><p>Send the exact LTC amount below. Your license appears automatically after the payment reaches <b>finished</b> status.</p></div></div>
+          <div class="payment-detail"><span>Amount</span><code id="ltcAmount">—</code><button id="copyLtcAmount" class="mini-btn">Copy</button></div>
+          <div class="payment-detail"><span>Address</span><code id="ltcAddress">—</code><button id="copyLtcAddress" class="mini-btn">Copy</button></div>
+          <div class="payment-detail"><span>Status</span><b id="ltcStatus">waiting</b></div>
+          <small>Do not send a different coin or network to this address.</small>
+        </div>
+      </section>
+
+      <section id="tab-license" class="dash-tab">
+        <div class="page-title"><span>ACCOUNT</span><h1>My License</h1><p>Your Axiom key and device binding stay attached to this Discord account.</p></div>
+        <div id="noLicenseBox" class="panel-blue"><h2>No license yet</h2><p>Purchase Axiom or redeem an owner-issued key to get started.</p><button id="goPurchaseBtn" class="pill primary-soft">Purchase Axiom</button></div>
+        <div id="licenseBox" class="license-account-grid hidden">
+          <div class="panel-blue license-main-card">
+            <div class="license-row"><span>License Key</span><div><code id="accountLicenseKey">Unavailable</code><button id="copyLicenseKey" class="mini-btn">Copy</button></div></div>
+            <div class="license-row"><span>Plan</span><b id="accountPlan">—</b></div>
+            <div class="license-row"><span>Expires</span><b id="accountExpires">—</b></div>
+            <div class="license-row"><span>Status</span><b id="accountStatus">—</b></div>
+          </div>
+          <div class="panel-blue license-main-card">
+            <div class="license-row"><span>HWID / Client ID</span><div><code id="accountHwid">Not bound yet</code><button id="copyHwid" class="mini-btn">Copy</button></div></div>
+            <div class="license-row"><span>Last Seen</span><b id="accountLastSeen">Never</b></div>
+            <p class="muted-copy">The client binds this field on first activation. The website does not spoof or change Windows hardware IDs.</p>
+            <button id="licenseResetBtn" class="pill outline">Reset Device Binding</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-downloads" class="dash-tab">
         <div class="download-latest panel-blue">
           <div class="download-icon">⇩</div><div class="grow"><h2>Axiom+ - Latest</h2><p>Latest version <span class="tag" id="clientVersion">.jar</span></p><small id="updatedText">Latest build</small></div>
           <button id="downloadBtn" class="pill primary-soft">Download</button>
@@ -78,7 +126,7 @@
         <div class="panel-blue crash-panel"><div class="utility-head"><div class="utility-icon">▤</div><div><h2>Crash Log Analyzer</h2><p>Paste a crash log to detect common compatibility problems.</p></div></div><textarea id="crashLog" placeholder="Paste your latest.log or crash report here..."></textarea><button id="analyzeBtn" class="pill primary-soft">Analyze Log</button><div id="crashResult" class="analysis-result"></div></div>
       </section>
 
-      <section id="tab-faq" class="dash-tab"><div class="page-title"><span>HELP</span><h1>FAQ</h1><p>Quick answers for common Axiom setup questions.</p></div><div class="faq-list"><details class="panel-blue" open><summary>How do I get access?</summary><p>Join the Discord, receive the required server role, sign in here, and redeem a valid Axiom license key.</p></details><details class="panel-blue"><summary>Why does my download say I have no license?</summary><p>Redeem your key first. The key must be active, not revoked, and linked to this Discord account.</p></details><details class="panel-blue"><summary>What does the device reset do?</summary><p>It clears the client ID stored on your Axiom license so you can bind the license again. It does not change or spoof Windows hardware identifiers.</p></details><details class="panel-blue"><summary>Where does the client file go?</summary><p>Put the Axiom JAR in the mods folder for the Minecraft/Fabric version your build targets.</p></details></div></section>
+      <section id="tab-faq" class="dash-tab"><div class="page-title"><span>HELP</span><h1>FAQ</h1><p>Quick answers for common Axiom setup questions.</p></div><div class="faq-list"><details class="panel-blue" open><summary>How do I get access?</summary><p>Sign in with Discord, purchase Axiom with card or Litecoin, or redeem an owner-issued key. Successful purchases are tied to your Discord account automatically.</p></details><details class="panel-blue"><summary>Why does my download say I have no license?</summary><p>Redeem your key first. The key must be active, not revoked, and linked to this Discord account.</p></details><details class="panel-blue"><summary>What does the device reset do?</summary><p>It clears the client ID stored on your Axiom license so you can bind the license again. It does not change or spoof Windows hardware identifiers.</p></details><details class="panel-blue"><summary>Where does the client file go?</summary><p>Put the Axiom JAR in the mods folder for the Minecraft/Fabric version your build targets.</p></details></div></section>
     </main>
   </div>
   <script src="/dashboard.js"></script>

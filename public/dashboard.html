@@ -42,6 +42,9 @@
         <button data-tab="utilities" class="side-item"><span>⌕</span>Utilities</button>
         <button data-tab="faq" class="side-item"><span>?</span>FAQ</button>
       </div>
+      <div id="ownerSideGroup" class="side-group hidden"><small>Owner</small>
+        <button data-tab="owner" class="side-item"><span>◆</span>Owner Panel</button>
+      </div>
       <div class="side-bottom">
         <div class="device-line">▣ <span id="deviceCount">Devices 0/1</span></div>
         <div class="profile-card"><img id="profileAvatar" src="/assets/axiom-logo.png" alt=""><div><b id="profileName">Axiom User</b><small id="profilePlan">No license</small></div><button id="logoutBtn" title="Log out">↪</button></div>
@@ -124,6 +127,50 @@
         <div class="utility-card panel-blue"><div class="utility-icon">↻</div><div class="grow"><h2>HWID / Client-ID Reset</h2><p><span id="resetCount">2 resets available</span>. This resets Axiom's own license binding only.</p></div><button id="hwidResetBtn" class="pill primary-soft">Reset Device ID</button></div>
         <div class="utility-card panel-blue danger-lite"><div class="utility-icon">▢</div><div class="grow"><h2>Config Reset</h2><p>Download a clean default Axiom config.</p></div><button id="configResetBtn" class="pill primary-soft">Download Default</button></div>
         <div class="panel-blue crash-panel"><div class="utility-head"><div class="utility-icon">▤</div><div><h2>Crash Log Analyzer</h2><p>Paste a crash log to detect common compatibility problems.</p></div></div><textarea id="crashLog" placeholder="Paste your latest.log or crash report here..."></textarea><button id="analyzeBtn" class="pill primary-soft">Analyze Log</button><div id="crashResult" class="analysis-result"></div></div>
+      </section>
+
+      <section id="tab-owner" class="dash-tab">
+        <div class="page-title"><span>OWNER</span><h1>Axiom Owner Panel</h1><p>This panel only appears for Discord accounts with a role listed in <code>DISCORD_OWNER_ROLE_IDS</code>.</p></div>
+        <div class="dashboard-grid">
+          <section class="panel-blue generator">
+            <h2>Generate working key</h2>
+            <form id="dashOwnerGenerateForm" class="license-form compact">
+              <label>License type
+                <select id="dashOwnerLicenseMode">
+                  <option value="timed" selected>Timed key</option>
+                  <option value="lifetime">Lifetime key</option>
+                </select>
+              </label>
+              <label id="dashOwnerDaysWrap">Days active <small>(1–3650)</small><input id="dashOwnerDurationDays" type="number" min="1" max="3650" value="30" required></label>
+              <label>Client ID <small>(optional — blank binds on first activation)</small><input id="dashOwnerClientId" placeholder="Optional"></label>
+              <label>Discord User ID <small>(optional — pre-binds key to an account)</small><input id="dashOwnerDiscordId" placeholder="Optional Discord numeric ID"></label>
+              <label>Note <small>(optional)</small><input id="dashOwnerNote" maxlength="120" placeholder="Customer / order / Discord name"></label>
+              <button class="pill primary-soft full" type="submit">Generate Key</button>
+              <div id="dashOwnerGenerateStatus" class="status"></div>
+            </form>
+            <div id="dashOwnerGeneratedBox" class="generated hidden">
+              <small>NEW LICENSE — COPY IT NOW</small>
+              <code id="dashOwnerGeneratedKey"></code>
+              <div class="generated-actions"><button id="dashOwnerCopyKey" class="ghost small" type="button">Copy key</button><span id="dashOwnerGeneratedExpiry"></span></div>
+            </div>
+          </section>
+          <section class="panel-blue quick-info">
+            <h2>Owner access</h2>
+            <div class="info-item"><span>01</span><p>Your Discord session is checked against <code>DISCORD_OWNER_ROLE_IDS</code>.</p></div>
+            <div class="info-item"><span>02</span><p>Timed keys work for exactly the number of days you choose.</p></div>
+            <div class="info-item"><span>03</span><p>Lifetime keys are marked as lifetime and stay active unless revoked.</p></div>
+            <div class="info-item"><span>04</span><p>Keys can bind to a Discord account and to one Axiom client ID/HWID.</p></div>
+          </section>
+        </div>
+        <section class="panel-blue licenses-panel">
+          <div class="table-heading"><div><h2>All licenses</h2><p>Newest 250 keys. You can revoke a key or clear its device binding.</p></div><button id="dashOwnerRefreshBtn" class="ghost small" type="button">Refresh</button></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Key</th><th>Type</th><th>Status</th><th>Client ID</th><th>Discord ID</th><th>Expires</th><th>Note</th><th>Actions</th></tr></thead>
+              <tbody id="dashOwnerLicenseRows"><tr><td colspan="8" class="empty">Open the Owner Panel to load licenses.</td></tr></tbody>
+            </table>
+          </div>
+        </section>
       </section>
 
       <section id="tab-faq" class="dash-tab"><div class="page-title"><span>HELP</span><h1>FAQ</h1><p>Quick answers for common Axiom setup questions.</p></div><div class="faq-list"><details class="panel-blue" open><summary>How do I get access?</summary><p>Sign in with Discord, purchase Axiom with card or Litecoin, or redeem an owner-issued key. Successful purchases are tied to your Discord account automatically.</p></details><details class="panel-blue"><summary>Why does my download say I have no license?</summary><p>Redeem your key first. The key must be active, not revoked, and linked to this Discord account.</p></details><details class="panel-blue"><summary>What does the device reset do?</summary><p>It clears the client ID stored on your Axiom license so you can bind the license again. It does not change or spoof Windows hardware identifiers.</p></details><details class="panel-blue"><summary>Where does the client file go?</summary><p>Put the Axiom JAR in the mods folder for the Minecraft/Fabric version your build targets.</p></details></div></section>

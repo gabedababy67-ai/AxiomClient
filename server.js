@@ -675,8 +675,21 @@ app.post('/api/admin/login', authLimiter, (req, res) => {
 app.get('/api/admin/session', adminOnly, (req, res) => res.json({ ok: true, viaDiscord: Boolean(req.userSession), user: req.userSession || null }));
 app.post('/api/admin/licenses', adminOnly, async (req, res, next) => {
   try {
-    const expiresAt = parseDuration(req.body);
-    if (!expiresAt) return res.status(400).json({ error: 'Choose a valid duration.' });
+    const mode = String(req.body.licenseMode || 'timed').toLowerCase();
+    let expiresAt;
+    let licenseType;
+    if (mode === 'lifetime') {
+      expiresAt = lifetimeExpiry();
+      licenseType = 'lifetime';
+    } else {
+      const days = Number(req.body.days ?? req.body.amount);
+      if (!Number.isInteger(days) || days < 1 || days > 3650) {
+        return res.status(400).json({ error: 'Choose a duration from 1 to 3650 days.' });
+      }
+      expiresAt = addDays(new Date(), days);
+      licenseType = 'manual';
+    }
+
     const requestedClientId = String(req.body.clientId || '').trim();
     const discordUserId = String(req.body.discordUserId || '').trim();
     if (requestedClientId.length > 180) return res.status(400).json({ error: 'Client ID is too long.' });
@@ -687,20 +700,28 @@ app.post('/api/admin/licenses', adminOnly, async (req, res, next) => {
       key = generateLicenseKey();
       try {
         await pool.query(
-          `INSERT INTO licenses (key_hash, key_preview, key_ciphertext, client_id, discord_user_id, expires_at, note, license_type) VALUES ($1,$2,$3,$4,$5,$6,$7,'manual')`,
-          [hashKey(key), `${key.slice(0, 14)}…`, encryptLicenseKey(key), requestedClientId || null, discordUserId || null, expiresAt, note]
+          `INSERT INTO licenses (key_hash, key_preview, key_ciphertext, client_id, discord_user_id, expires_at, note, license_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [hashKey(key), `${key.slice(0, 14)}…`, encryptLicenseKey(key), requestedClientId || null, discordUserId || null, expiresAt, note, licenseType]
         );
         inserted = true;
       } catch (err) { if (err.code !== '23505') throw err; }
     }
     if (!inserted) throw new Error('Could not generate a unique key.');
-    res.status(201).json({ key, expiresAt: expiresAt.toISOString(), clientId: requestedClientId || null, discordUserId: discordUserId || null, note });
+    res.status(201).json({
+      key,
+      expiresAt: expiresAt.toISOString(),
+      licenseType,
+      lifetime: licenseType === 'lifetime',
+      clientId: requestedClientId || null,
+      discordUserId: discordUserId || null,
+      note
+    });
   } catch (err) { next(err); }
 });
 app.get('/api/admin/licenses', adminOnly, async (req, res, next) => {
   try {
     const result = await pool.query(`
-      SELECT id,key_preview,client_id,discord_user_id,expires_at,revoked,note,created_at,activated_at,last_seen_at,
+      SELECT id,key_preview,client_id,discord_user_id,expires_at,revoked,note,license_type,created_at,activated_at,last_seen_at,
       (expires_at > NOW() AND revoked = FALSE) AS active FROM licenses ORDER BY created_at DESC LIMIT 250
     `);
     res.json({ licenses: result.rows });

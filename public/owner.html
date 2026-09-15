@@ -39,14 +39,17 @@
         <section class="panel generator">
           <h2>Generate key</h2>
           <form id="generateForm" class="license-form compact">
-            <div class="duration-row">
-              <label>Duration<input id="durationAmount" type="number" min="1" max="3650" value="7" required></label>
-              <label>Unit<select id="durationUnit"><option value="minutes">Minutes</option><option value="hours">Hours</option><option value="days" selected>Days</option><option value="weeks">Weeks</option><option value="months">Months</option></select></label>
-            </div>
+            <label>License type
+              <select id="licenseMode">
+                <option value="timed" selected>Timed key</option>
+                <option value="lifetime">Lifetime key</option>
+              </select>
+            </label>
+            <label id="daysWrap">Days active <small>(1–3650)</small><input id="durationDays" type="number" min="1" max="3650" value="30" required></label>
             <label>Client ID <small>(optional — blank binds on first activation)</small><input id="newClientId" placeholder="Optional"></label>
             <label>Discord User ID <small>(optional — pre-binds the key to one Discord account)</small><input id="newDiscordUserId" placeholder="Optional Discord numeric ID"></label>
             <label>Note <small>(optional)</small><input id="licenseNote" maxlength="120" placeholder="Customer / order / Discord name"></label>
-            <button class="pill primary-soft full" type="submit">Generate license</button>
+            <button class="pill primary-soft full" type="submit">Generate working key</button>
           </form>
           <div id="generatedBox" class="generated hidden">
             <small>NEW LICENSE — COPY IT NOW</small>
@@ -57,7 +60,7 @@
 
         <section class="panel quick-info">
           <h2>How it works</h2>
-          <div class="info-item"><span>01</span><p>Generate a timed Axiom key.</p></div>
+          <div class="info-item"><span>01</span><p>Generate a timed key for any number of days, or a lifetime Axiom key.</p></div>
           <div class="info-item"><span>02</span><p>Users sign in with Discord. Paid access is then attached to that Discord account.</p></div>
           <div class="info-item"><span>03</span><p>Redeeming a key links it to Discord and a client ID.</p></div>
           <div class="info-item"><span>04</span><p>The mod calls <code>/api/license/check</code>; expired or revoked keys return <b>valid: false</b>.</p></div>
@@ -68,8 +71,8 @@
         <div class="table-heading"><div><h2>Licenses</h2><p>Newest 250 licenses. Raw keys are shown only once when generated.</p></div><button id="refreshBtn" class="ghost small">Refresh</button></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Key</th><th>Status</th><th>Client ID</th><th>Discord ID</th><th>Expires</th><th>Note</th><th>Actions</th></tr></thead>
-            <tbody id="licenseRows"><tr><td colspan="7" class="empty">No licenses loaded.</td></tr></tbody>
+            <thead><tr><th>Key</th><th>Type</th><th>Status</th><th>Client ID</th><th>Discord ID</th><th>Expires</th><th>Note</th><th>Actions</th></tr></thead>
+            <tbody id="licenseRows"><tr><td colspan="8" class="empty">No licenses loaded.</td></tr></tbody>
           </table>
         </div>
       </section>

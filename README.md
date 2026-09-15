@@ -1,8 +1,19 @@
-# Axiom Client Website v3
+# Axiom Client Website v4
 
 Axiom Client website + account dashboard for Render/GitHub. This version makes Discord the account system, adds Stripe card checkout and Litecoin checkout, and keeps the resulting license key and HWID/client-ID binding on the customer's website account.
 
-## What changed in v3
+## What changed in v4
+
+- Discord users with a role listed in `DISCORD_OWNER_ROLE_IDS` automatically get an **Owner Panel** tab in the normal dashboard.
+- The owner panel is enforced server-side too; hiding/showing the button is not the security check.
+- Owners can generate **Timed** keys for any whole number of days from 1 to 3650.
+- Owners can generate **Lifetime** keys.
+- Generated keys can optionally be pre-bound to a Discord user ID and/or Axiom client ID/HWID.
+- Owners can view license status, revoke keys, and clear a device binding.
+- The separate `/owner` page still works and now supports Timed/Lifetime keys too.
+- A Discord role change is picked up the next time that user signs in with Discord.
+
+## Existing v3 features
 
 - The site is Discord-first: opening `/` shows the Discord sign-in gate until a valid session exists.
 - Any member of the configured Discord server can sign in and purchase. They do **not** need the customer role before buying.

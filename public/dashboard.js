@@ -37,6 +37,7 @@ function switchTab(name) {
   if (name === 'basefinds') loadFeed('basefind', 'baseFeed');
   if (name === 'utilities' || name === 'license') loadResetStatus();
   if (name === 'license') loadLicense();
+  if (name === 'owner' && state.user?.isOwner) loadOwnerLicenses();
 }
 function money(value) { return Number(value || 0).toFixed(2); }
 function formatDate(value) { return value ? new Date(value).toLocaleString() : '—'; }
@@ -51,6 +52,76 @@ async function copyText(text) {
     const input = document.createElement('textarea'); input.value = text; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove();
   }
 }
+
+async function loadOwnerLicenses() {
+  const body = document.getElementById('dashOwnerLicenseRows');
+  if (!body || !state.user?.isOwner) return;
+  body.innerHTML = '<tr><td colspan="8" class="empty">Loading…</td></tr>';
+  try {
+    const data = await jsonFetch('/api/admin/licenses');
+    if (!data.licenses.length) { body.innerHTML = '<tr><td colspan="8" class="empty">No licenses yet.</td></tr>'; return; }
+    body.innerHTML = data.licenses.map(l => {
+      const status = l.revoked ? 'revoked' : (l.active ? 'active' : 'expired');
+      const type = l.license_type === 'lifetime' ? 'Lifetime' : 'Timed';
+      const expiry = l.license_type === 'lifetime' ? 'Lifetime' : new Date(l.expires_at).toLocaleString();
+      return `<tr><td><code>${escapeHtml(l.key_preview)}</code></td><td>${type}</td><td><span class="badge ${status}">${status.toUpperCase()}</span></td><td>${l.client_id ? escapeHtml(l.client_id) : 'Unbound'}</td><td>${l.discord_user_id ? escapeHtml(l.discord_user_id) : 'Unbound'}</td><td>${expiry}</td><td>${escapeHtml(l.note || '—')}</td><td><div class="row-actions">${!l.revoked ? `<button data-owner-action="revoke" data-id="${l.id}">Revoke</button>` : ''}${l.client_id ? `<button data-owner-action="unbind" data-id="${l.id}">Unbind</button>` : ''}</div></td></tr>`;
+    }).join('');
+  } catch (err) {
+    body.innerHTML = `<tr><td colspan="8" class="empty">${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+function setupOwnerPanel() {
+  const mode = document.getElementById('dashOwnerLicenseMode');
+  const daysWrap = document.getElementById('dashOwnerDaysWrap');
+  const days = document.getElementById('dashOwnerDurationDays');
+  const form = document.getElementById('dashOwnerGenerateForm');
+  if (!mode || !form) return;
+
+  const sync = () => {
+    const lifetime = mode.value === 'lifetime';
+    daysWrap.classList.toggle('hidden', lifetime);
+    days.required = !lifetime;
+  };
+  mode.addEventListener('change', sync);
+  sync();
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    setStatus('dashOwnerGenerateStatus', 'Generating key…', true);
+    try {
+      const licenseMode = mode.value;
+      const data = await jsonFetch('/api/admin/licenses', {
+        method: 'POST',
+        body: JSON.stringify({
+          licenseMode,
+          days: licenseMode === 'lifetime' ? null : Number(days.value),
+          clientId: document.getElementById('dashOwnerClientId').value,
+          discordUserId: document.getElementById('dashOwnerDiscordId').value,
+          note: document.getElementById('dashOwnerNote').value
+        })
+      });
+      document.getElementById('dashOwnerGeneratedKey').textContent = data.key;
+      document.getElementById('dashOwnerGeneratedExpiry').textContent = data.lifetime ? 'Lifetime access' : `Expires ${new Date(data.expiresAt).toLocaleString()}`;
+      document.getElementById('dashOwnerGeneratedBox').classList.remove('hidden');
+      setStatus('dashOwnerGenerateStatus', 'Working license key generated.', true);
+      await loadOwnerLicenses();
+    } catch (err) { setStatus('dashOwnerGenerateStatus', err.message); }
+  });
+
+  document.getElementById('dashOwnerCopyKey').addEventListener('click', () => copyText(document.getElementById('dashOwnerGeneratedKey').textContent));
+  document.getElementById('dashOwnerRefreshBtn').addEventListener('click', loadOwnerLicenses);
+  document.getElementById('dashOwnerLicenseRows').addEventListener('click', async e => {
+    const btn = e.target.closest('button[data-owner-action]');
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      await jsonFetch(`/api/admin/licenses/${btn.dataset.id}/${btn.dataset.ownerAction}`, { method: 'POST' });
+      await loadOwnerLicenses();
+    } catch (err) { alert(err.message); btn.disabled = false; }
+  });
+}
+setupOwnerPanel();
 
 document.querySelectorAll('.side-item').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 document.getElementById('logoutBtn').addEventListener('click', async () => { try { await jsonFetch('/api/auth/logout', { method: 'POST' }); } catch {} location.href = '/'; });
@@ -201,6 +272,7 @@ async function boot() {
     state.user = me.user; state.config = cfg; state.payments = payments; showApp();
     document.getElementById('profileName').textContent = state.user.username;
     if (state.user.avatar) document.getElementById('profileAvatar').src = state.user.avatar;
+    if (state.user.isOwner) document.getElementById('ownerSideGroup').classList.remove('hidden');
     document.getElementById('clientVersion').textContent = cfg.version || '1.0.0';
     document.getElementById('updateVersion').textContent = `Axiom ${cfg.version || '1.0.0'}`;
     document.getElementById('updatedText').textContent = `Last updated ${cfg.updated || 'recently'}`;
@@ -212,6 +284,7 @@ async function boot() {
     await loadLicense();
     const requested = params.get('tab');
     const tabs = ['purchase','license','downloads','updates','redeem','reviews','basefinds','suggestions','utilities','faq'];
+    if (state.user.isOwner) tabs.push('owner');
     switchTab(tabs.includes(requested) ? requested : (state.license?.active ? 'license' : 'purchase'));
     if (params.get('purchase') === 'success') waitForStripeFulfillment();
     if (params.get('purchase') === 'cancelled') setStatus('purchaseNotice', 'Checkout was cancelled.');
